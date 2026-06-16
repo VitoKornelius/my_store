@@ -163,7 +163,13 @@ export default async function seedLargeCatalog({ container }: ExecArgs) {
     }
   }
 
-  const categoryNames = [...new Set(products.map((product) => product.category))]
+  const existingProducts = await productService.listProducts({
+    handle: products.map((product) => product.handle),
+  })
+  const existingHandles = new Set(existingProducts.map((product) => product.handle))
+  const productsToCreate = products.filter((product) => !existingHandles.has(product.handle))
+
+  const categoryNames = [...new Set(productsToCreate.map((product) => product.category))]
   const allCategories = await productService.listProductCategories({}, { take: 500 })
   const existingCategories = allCategories.filter((category) =>
     categoryNames.includes(category.name)
@@ -190,15 +196,7 @@ export default async function seedLargeCatalog({ container }: ExecArgs) {
     throw new Error("Base marketplace data is missing.")
   }
 
-  const existingProducts = await productService.listProducts({
-    handle: products.map((product) => product.handle),
-  })
-  const existingHandles = new Set(existingProducts.map((product) => product.handle))
-
-  for (const product of products) {
-    if (existingHandles.has(product.handle)) {
-      continue
-    }
+  for (const product of productsToCreate) {
     const seller = sellers.find((item) => item.email === product.sellerEmail)!
     const category = categories.find((item) => item.name === product.category)!
     const skuBase = product.prefix + "-" + String(product.index + 1).padStart(2, "0")

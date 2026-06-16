@@ -175,21 +175,6 @@ export default async function seedMoreProducts({ container }: ExecArgs) {
     throw new Error("This seed only works with the existing 12 demo sellers.")
   }
 
-  const existingCategories = await productService.listProductCategories({}, { take: 500 })
-  const categoryNames = sellerItems.map((seller) => seller.category)
-  const missingNames = categoryNames.filter(
-    (name) => !existingCategories.some((category) => category.name === name)
-  )
-  let categories = existingCategories
-  if (missingNames.length) {
-    const { result } = await createProductCategoriesWorkflow(container).run({
-      input: {
-        product_categories: missingNames.map((name) => ({ name, is_active: true })),
-      },
-    })
-    categories = [...categories, ...result]
-  }
-
   const allItems = sellerItems.flatMap((seller) =>
     seller.items.map((item, index) => ({
       sellerEmail: seller.email,
@@ -206,6 +191,23 @@ export default async function seedMoreProducts({ container }: ExecArgs) {
     handle: allItems.map((item) => item.handle),
   })
   const existingHandles = new Set(existingProducts.map((product) => product.handle))
+  const itemsToCreate = allItems.filter((item) => !existingHandles.has(item.handle))
+
+  const existingCategories = await productService.listProductCategories({}, { take: 500 })
+  const categoryNames = [...new Set(itemsToCreate.map((item) => item.category))]
+  const missingNames = categoryNames.filter(
+    (name) => !existingCategories.some((category) => category.name === name)
+  )
+  let categories = existingCategories
+  if (missingNames.length) {
+    const { result } = await createProductCategoriesWorkflow(container).run({
+      input: {
+        product_categories: missingNames.map((name) => ({ name, is_active: true })),
+      },
+    })
+    categories = [...categories, ...result]
+  }
+
   const [shippingProfile] = await fulfillmentService.listShippingProfiles({ type: "default" })
   const [salesChannel] = await salesChannelService.listSalesChannels({
     name: "Default Sales Channel",
@@ -215,10 +217,7 @@ export default async function seedMoreProducts({ container }: ExecArgs) {
     throw new Error("Base marketplace data is missing.")
   }
 
-  for (const item of allItems) {
-    if (existingHandles.has(item.handle)) {
-      continue
-    }
+  for (const item of itemsToCreate) {
     const seller = sellers.find((record) => record.email === item.sellerEmail)!
     const category = categories.find((record) => record.name === item.category)!
     const sku = item.prefix + "-" + String(item.index + 1).padStart(2, "0")

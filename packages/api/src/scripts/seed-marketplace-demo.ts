@@ -202,10 +202,17 @@ export default async function seedMarketplaceDemo({ container }: ExecArgs) {
     }
   }
 
-  const categoryNames = [...new Set(demoProducts.map((product) => product.category))]
-  const existingCategories = await productService.listProductCategories({
-    name: categoryNames,
+  const existingProducts = await productService.listProducts({
+    handle: demoProducts.map((product) => product.handle),
   })
+  const existingHandles = new Set(existingProducts.map((product) => product.handle))
+  const productsToCreate = demoProducts.filter((product) => !existingHandles.has(product.handle))
+
+  const categoryNames = [...new Set(productsToCreate.map((product) => product.category))]
+  const allCategories = await productService.listProductCategories({}, { take: 500 })
+  const existingCategories = allCategories.filter((category) =>
+    categoryNames.includes(category.name)
+  )
   const missingCategoryNames = categoryNames.filter(
     (name) => !existingCategories.some((category) => category.name === name)
   )
@@ -234,16 +241,7 @@ export default async function seedMarketplaceDemo({ container }: ExecArgs) {
     throw new Error("Run the base seed before the marketplace demo seed.")
   }
 
-  const existingProducts = await productService.listProducts({
-    handle: demoProducts.map((product) => product.handle),
-  })
-  const existingHandles = new Set(existingProducts.map((product) => product.handle))
-
-  for (const product of demoProducts) {
-    if (existingHandles.has(product.handle)) {
-      continue
-    }
-
+  for (const product of productsToCreate) {
     const seller = sellers.find((item) => item.email === product.sellerEmail)!
     const category = categories.find((item) => item.name === product.category)!
     await createProductsWorkflow(container).run({
